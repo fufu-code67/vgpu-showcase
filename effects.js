@@ -470,11 +470,14 @@ function translate(x, y, z) {
     ctx.configure({ device, format, alphaMode: "opaque" });
 
     const module = device.createShaderModule({ code: CUBE_WGSL });
+    // GPUShaderStage-Konstanten fehlen in manchen Chrome-Versionen → numerische Fallbacks
+    const STAGE_V = (typeof GPUShaderStage !== "undefined" && GPUShaderStage.VERTEX !== undefined) ? GPUShaderStage.VERTEX : 0x1;
+    const STAGE_F = (typeof GPUShaderStage !== "undefined" && GPUShaderStage.FRAGMENT !== undefined) ? GPUShaderStage.FRAGMENT : 0x2;
     const uboLayout = device.createBindGroupLayout({
       entries: [
-        { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: {} },
-        { binding: 1, buffer: {} },
-        { binding: 2, buffer: {} },
+        { binding: 0, visibility: STAGE_V | STAGE_F, buffer: {} },
+        { binding: 1, visibility: STAGE_V, buffer: {} },
+        { binding: 2, visibility: STAGE_V, buffer: {} },
       ],
     });
     const pipeline = device.createRenderPipeline({
