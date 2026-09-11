@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VGPU Live Showcase — GPU-Effekte zum Ansehen</title>
+<style>
+  :root {
+    --bg: #07090d;
+    --surface: #0e131a;
+    --border: #1e2632;
+    --ink: #e7ecf3;
+    --muted: #8d97a6;
+    --accent: #5eead4;
+    --accent2: #f59e0b;
+    --accent3: #a78bfa;
+    --mono: ui-monospace, "JetBrains Mono", SFMono-Regular, Menlo, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body { background: var(--bg); color: var(--ink); font-family: var(--sans); line-height: 1.6; }
+
+  /* Hero mit Live-Shader-Hintergrund */
+  .hero {
+    position: relative;
+    min-height: 70vh;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+  }
+  #hero-canvas {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    display: block;
+  }
+  .hero-overlay {
+    position: relative; z-index: 2;
+    text-align: center;
+    pointer-events: none;
+  }
+  .hero-overlay h1 {
+    font-size: clamp(2.4rem, 7vw, 5rem);
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    text-shadow: 0 4px 30px rgba(0,0,0,0.8);
+  }
+  .hero-overlay p {
+    margin-top: 12px;
+    font-size: 1.2rem;
+    color: #cbd5e1;
+    text-shadow: 0 2px 12px rgba(0,0,0,0.8);
+  }
+  .scroll-hint {
+    position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%);
+    font-family: var(--mono); font-size: 0.75rem; color: var(--muted);
+    z-index: 2; animation: bounce 2s infinite;
+  }
+  @keyframes bounce { 0%,100%{transform:translateY(0)} 50%{transform:translateY(6px)} }
+
+  nav {
+    position: sticky; top: 0; z-index: 50;
+    background: rgba(7,9,13,0.85);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--border);
+  }
+  nav .inner {
+    max-width: 1100px; margin: 0 auto; padding: 12px 24px;
+    display: flex; gap: 24px; align-items: center;
+  }
+  nav a {
+    color: var(--muted); text-decoration: none;
+    font-size: 0.9rem; font-family: var(--mono);
+    transition: color 0.15s;
+  }
+  nav a:hover { color: var(--accent); }
+  nav .logo { font-weight: 700; color: var(--ink); }
+
+  main { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+
+  section { padding: 64px 0 32px; }
+  section h2 {
+    font-size: 2rem; font-weight: 700; letter-spacing: -0.02em;
+    margin-bottom: 6px;
+  }
+  section h2 .num {
+    font-family: var(--mono); color: var(--accent);
+    font-size: 1.1rem; font-weight: 500; margin-right: 12px;
+  }
+  section > p { color: var(--muted); margin-bottom: 32px; max-width: 640px; }
+
+  /* Live-Kacheln */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 20px;
+  }
+  .tile {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    transition: border-color .15s;
+  }
+  .tile:hover { border-color: #2f3b4d; }
+  .tile canvas {
+    width: 100%; aspect-ratio: 16/9;
+    display: block; background: #05070a;
+    cursor: crosshair;
+  }
+  .tile .meta { padding: 14px 16px; }
+  .tile .meta h3 { font-size: 0.95rem; font-weight: 650; margin-bottom: 4px; }
+  .tile .meta p { font-size: 0.8rem; color: var(--muted); line-height: 1.5; }
+  .tile .meta .wgsl {
+    font-family: var(--mono); font-size: 0.65rem;
+    color: var(--accent); margin-top: 8px; display: block;
+    opacity: 0.7;
+  }
+
+  /* Partikel & 3D groß */
+  .big {
+    margin: 0 auto;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    overflow: hidden;
+  }
+  .big canvas { width: 100%; height: 420px; display: block; background: #05070a; }
+  .big .meta { padding: 16px 20px; }
+  .big .meta h3 { font-size: 1.05rem; font-weight: 650; }
+  .big .meta p { font-size: 0.85rem; color: var(--muted); margin-top: 4px; }
+
+  .fallback {
+    display: grid; place-items: center;
+    aspect-ratio: 16/9;
+    color: var(--muted);
+    font-family: var(--mono); font-size: 0.85rem;
+    text-align: center; padding: 20px;
+  }
+  .fallback a { color: var(--accent); }
+
+  /* Erklärungs-Sektion */
+  .explain {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(280px,1fr));
+    gap: 20px; margin-top: 8px;
+  }
+  .explain .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px;
+  }
+  .explain .card h3 { font-size: 1rem; font-weight: 650; margin-bottom: 8px; }
+  .explain .card p { font-size: 0.85rem; color: var(--muted); }
+  .explain code { font-family: var(--mono); font-size: 0.78rem; color: var(--accent); }
+
+  footer {
+    margin-top: 64px;
+    border-top: 1px solid var(--border);
+    padding: 40px 24px 60px;
+    text-align: center;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 0.78rem;
+  }
+  footer a { color: var(--accent); text-decoration: none; }
+  footer a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="inner">
+    <span class="logo">⚡ vgpu showcase</span>
+    <a href="#effekte">Effekte</a>
+    <a href="#partikel">Partikel</a>
+    <a href="#3d">3D</a>
+    <a href="#was-ist-vgpu">Was ist VGPU?</a>
+    <a href="https://github.com/fufu-code67/vgpu-showcase" target="_blank" style="margin-left:auto; color:var(--accent);">GitHub ↗</a>
+  </div>
+</nav>
+
+<header class="hero">
+  <canvas id="hero-canvas"></canvas>
+  <div class="hero-overlay">
+    <h1>GPU-Effekte,<br>die man sehen kann.</h1>
+    <p>Alles unten läuft <b>live</b> — echte WebGPU-Shader, gerendert auf deiner Grafikkarte.</p>
+  </div>
+  <div class="scroll-hint">▼ scrollen</div>
+</header>
+
+<main>
+
+<section id="effekte">
+  <h2><span class="num">01</span>Fullscreen-Effekte</h2>
+  <p>Jede Kachel ist ein echter Fragment-Shader — die laufen alle in Echtzeit auf deiner GPU. Beweg die Maus über eine Kachel, um mit ihr zu interagieren.</p>
+  <div class="grid" id="effects-grid"></div>
+</section>
+
+<section id="partikel">
+  <h2><span class="num">02</span>GPU-Partikel</h2>
+  <p>Ein einziger Draw-Call, kein CPU-Loop: 20.000 Partikel, deren Position komplett auf der GPU berechnet wird. Beweg die Maus — die Partikel folgen.</p>
+  <div class="big">
+    <canvas id="particles-canvas"></canvas>
+    <div class="meta">
+      <h3>20.000 Partikel · 1 Draw-Call · 0 Buffer-Downloads</h3>
+      <p>Wie vgpu's <code>draw()</code> ohne Geometrie: Jeder Partikel berechnet seine Position aus <code>instance_index</code> + Zeit auf der GPU.</p>
+    </div>
+  </div>
+</section>
+
+<section id="3d">
+  <h2><span class="num">03</span>3D-Rendering</h2>
+  <p>Echte 3D-Szene mit Vertex-Shader, Depth-Buffer und Beleuchtung — alles in purem WGSL ohne three.js.</p>
+  <div class="big">
+    <canvas id="cube-canvas"></canvas>
+    <div class="meta">
+      <h3>Rotierender Mesh mit Lambert-Beleuchtung</h3>
+      <p>Vertex-Shader transformiert, Fragment-Shader beleuchtet. Genau wie <code>draw(gpu, { geometry })</code> in vgpu.</p>
+    </div>
+  </div>
+</section>
+
+<section id="was-ist-vgpu">
+  <h2><span class="num">04</span>Was ist VGPU?</h2>
+  <p>vgpu ist eine TypeScript-Bibliothek auf WebGPU, die Shader-Programmierung radikal vereinfacht.</p>
+  <div class="explain">
+    <div class="card">
+      <h3>Was es ist</h3>
+      <p style="color:var(--muted); font-size:0.88rem; margin-top:8px;">
+        Eine dünne API-Schicht über WebGPU: <code>effect()</code> für Fullscreen-Shader,
+        <code>draw()</code> für Geometrie, <code>compute()</code> für GPU-Rechen-Kernel.
+        Uniforms per <code>set()</code> statt Hand-Bindings. Läuft im Browser und headless in Node.js.
+      </p>
+    </div>
+    <div class="card">
+      <h3>Warum es Cool ist</h3>
+      <p style="color:var(--muted); font-size:0.88rem; margin-top:8px;">
+        Kein 300-Zeilen-Boilerplate wie bei raw WebGPU. Agenten können Shader headless
+        rendern und die Pixel programmatisch verifizieren. Läuft auch ohne dedizierte GPU
+        (Software-Renderer). Offline-Doku via <code>vgpu docs</code>.
+      </p>
+    </div>
+    <div class="card">
+      <h3>Wofür du es Nutzen Kannst</h3>
+      <p style="color:var(--muted); font-size:0.88rem; margin-top:8px;">
+        Video-Transitions (Glitch, Smear, Fade), Live-Hintergründe für Streams und Websites,
+        Partikel-Simulationen, prozedurale Texturen, ML-Visualisierung — alles was Frames erzeugt,
+        kann vgpu beschleunigen.
+      </p>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <p>Gebaut mit <a href="https://vgpu.sh" target="_blank">WebGPU</a> · Quelle: <a href="https://github.com/fufu-code67/vgpu-showcase">github.com/fufu-code67/vgpu-showcase</a></p>
+  <p style="margin-top:6px;">Jede Kachel oben ist ein eigenständiger WGSL-Shader — inspectierbar im Quellcode dieser Seite.</p>
+</footer>
+
+
+<script src="effects.js"></script>
+</body>
+</html>
