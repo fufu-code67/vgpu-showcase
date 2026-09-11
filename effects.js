@@ -32,14 +32,6 @@ struct Params { time: f32, mouse: vec2f, aspect: f32, _pad: f32 };
 @group(0) @binding(0) var<uniform> params: Params;
 
 struct VertexOut { @builtin(position) pos: vec4f, @location(0) uv: vec2f }
-
-@vertex fn vs(@builtin(vertex_index) vi: u32) -> VertexOut {
-  var p = array<vec2f,3>(vec2f(-1.0,-1.0), vec2f(3.0,-1.0), vec2f(-1.0,3.0));
-  var out: VertexOut;
-  out.pos = vec4f(p[vi], 0.0, 1.0);
-  out.uv = vec2f((p[vi].x + 1.0) * 0.5, (1.0 - p[vi].y) * 0.5);
-  return out;
-}
 `;
 
 /* ── Effekt-Definitionen ──────────────────────────── */
@@ -381,11 +373,21 @@ function translate(x, y, z) {
       @fragment fn fs(@location(0) uv: vec2f) -> @location(0) vec4f { ${body} }
     `});
 
+    // Kompilierfehler sichtbar machen (statt still schwarzer Kachel)
+    device.pushErrorScope("validation");
     const pipeline = device.createRenderPipeline({
       layout: "auto",
       vertex: { module, entryPoint: "vs" },
       fragment: { module, entryPoint: "fs", targets: [{ format }] },
       primitive: { topology: "triangle-list" },
+    });
+    device.popErrorScope().then((err) => {
+      if (err) {
+        const d = document.createElement("div");
+        d.style.cssText = "color:#f66;font:11px monospace;padding:6px;white-space:pre-wrap";
+        d.textContent = "Shader-Fehler in dieser Kachel: " + err.message.slice(0, 300);
+        canvas.parentElement.prepend(d);
+      }
     });
     const ubo = device.createBuffer({ size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     const bind = device.createBindGroup({
